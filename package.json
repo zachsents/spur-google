@@ -1,0 +1,30 @@
+{
+  "name": "spur-google",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gmail, Drive and Sheets as a Switch spur: every inbox followed, mail searched and read, files and cells.",
+  "license": "MIT",
+  "repository": "github:zachsents/spur-google",
+  "spur": {
+    "name": "google",
+    "command": [
+      "python3",
+      "./main.py"
+    ],
+    "shim": "switchboard",
+    "needs": [
+      "always-on"
+    ],
+    "connections": [
+      {
+        "provider": "google",
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/drive.file",
+          "https://www.googleapis.com/auth/spreadsheets"
+        ],
+        "multiple": true
+      }
+    ]
+  }
+}
