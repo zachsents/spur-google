@@ -30,7 +30,9 @@ app = sbmcp.Server(NAME, version="2", instructions=(
     "reads a project's Data Access page (scopes by tier, justifications, uses, video) as google-consent:<project>; "
     "set_consent_scopes makes it list exactly the scopes given, with each justification, uses and video, in one step up "
     "to Save, and answers an approval card's parts whose Approve runs save_consent_scopes (saved, then checked after a "
-    "reload). "
+    "reload); scope_audit checks a project's scopes three ways (the code's allow-list and what its features request, "
+    "the Data Access page, and its per-scope justification source), writes the audit and justification beside the "
+    "source, and answers set_consent_scopes' arguments. "
     "read, discard, connect and sync are one tool each for every part, picked by their arguments; "
     "accounts lists every part's accounts and finish takes every consent back to the part that started it."),
     requests=["server@*", "macos@*", "gmail@*", "google-*@*"],

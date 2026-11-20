@@ -18,6 +18,7 @@ import mail
 import gmail_files  # noqa: F401  (Gmail's attachments tool)
 import oauth  # noqa: F401  (its tools and loops)
 import data_access  # noqa: F401  (an OAuth app's Data Access page: consent_scopes, set_consent_scopes, save_consent_scopes)
+import scope_audit  # noqa: F401  (an OAuth app's scopes checked against its code, Console and justifications)
 import sheets
 from server import app, local, specs
 
