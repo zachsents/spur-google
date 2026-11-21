@@ -1,11 +1,11 @@
 {
-  "name": "spur-google",
+  "name": "switch-ext-google",
   "version": "0.1.0",
   "private": true,
-  "description": "Gmail, Drive and Sheets as a Switch spur: every inbox followed, mail searched and read, files and cells.",
+  "description": "Gmail, Drive and Sheets as a Switch extension: every inbox followed, mail searched and read, files and cells.",
   "license": "MIT",
-  "repository": "github:zachsents/spur-google",
-  "spur": {
+  "repository": "github:zachsents/switch-ext-google",
+  "extension": {
     "name": "google",
     "command": [
       "python3",

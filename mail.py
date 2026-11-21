@@ -235,7 +235,7 @@ def check_reads():
 
 
 CURSORS = os.path.join(HOME, "history.json")
-"""In Switch, where each account's history was: Switch's brain isn't asked (its spurs have no `sb`)."""
+"""In Switch, where each account's history was: Switch's brain isn't asked (its extensions have no `sb`)."""
 
 
 def saved_accounts():

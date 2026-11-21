@@ -1,4 +1,4 @@
-"""In Switch: Calendar is its own spur (calendar), so this one is Gmail, Drive, Sheets and the shared sign-in.
+"""In Switch: Calendar is its own extension (calendar), so this one is Gmail, Drive, Sheets and the shared sign-in.
 
 google: The user's Google services as one appendage, on the server in server.py: Gmail (mail.py), calendar (gcal.py),
 Drive (drive.py), Sheets (sheets.py) and the shared sign-in (oauth.py). It was gmail, google-calendar, google-drive,
