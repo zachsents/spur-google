@@ -37,7 +37,9 @@ app = sbmcp.Server(NAME, version="2", instructions=(
     "accounts lists every part's accounts and finish takes every consent back to the part that started it."),
     requests=["server@*", "macos@*", "gmail@*", "google-*@*"],
     reads=["asks", "*/accounts", "comms/gmail"],
-    connections=[{"provider": "google", "multiple": True, "scopes": [
+    # legacy: the Keychain service its grants were kept in before Switch's connections (mail.KEYCHAIN), which Switch
+    # moves into them.
+    connections=[{"provider": "google", "multiple": True, "legacy": "switchboard-gmail", "scopes": [
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/spreadsheets",
