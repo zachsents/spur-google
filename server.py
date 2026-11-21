@@ -41,6 +41,8 @@ app = sbmcp.Server(NAME, version="2", instructions=(
     # moves into them.
     connections=[{"provider": "google", "multiple": True, "legacy": "switchboard-gmail", "scopes": [
         "https://www.googleapis.com/auth/gmail.readonly",
+        # Drafts and sending (mail.SEND_SCOPE), asked for in the same consent so nothing waits on a second one.
+        "https://www.googleapis.com/auth/gmail.compose",
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/spreadsheets",
     ]}])
