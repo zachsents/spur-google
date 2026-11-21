@@ -54,7 +54,7 @@ import urllib.request
 import grant
 import sbmcp
 from server import part, home as home_of
-from google_oauth import Disconnected, Google, TokenError
+from google_oauth import SWITCH, Disconnected, Google, TokenError
 
 for _kind, _ext in (("model/stl", ".stl"), ("model/3mf", ".3mf"), ("model/obj", ".obj"), ("model/step", ".step"),
                     ("model/step", ".stp")):
@@ -272,6 +272,10 @@ def load_brain():
     check_reads()
     found = {}
     rows, asked = brain_or_saved('entities | where id startswith "gmail-account:" | project id, facts')
+    if SWITCH and asked:
+        # Switch's connections are the accounts: one never followed has no gmail-account entity yet.
+        seen = {(r["facts"] or {}).get("address") for r in rows}
+        rows = rows + [r for r in saved_accounts() if r["facts"]["address"] not in seen]
     for row in rows:
         f = row["facts"] or {}
         if f.get("address") and f["address"] not in accounts and google.account(f["address"]):
