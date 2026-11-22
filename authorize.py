@@ -107,7 +107,7 @@ def authorize(account):
                     if move["step"] == "code":
                         code = authentication.authentication_code(account, "no-reply@accounts.google.com", "Google", started)
                         if code.get("found"):
-                            tab.op({"op": "sign_in", "otp": code["code"]})
+                            tab.op({"op": "sign_in", "otp": code["code"], "backgroundOnly": True})
                             continue
                     blocked = move["step"]
                     break
@@ -117,7 +117,7 @@ def authorize(account):
                 if kind in ("pick", "continue", "try_another", "choose_password"):
                     tab.click(move["match"])
                 elif kind == "password":
-                    tab.op({"op": "sign_in", "account": account})
+                    tab.op({"op": "sign_in", "account": account, "backgroundOnly": True})
                 elif kind == "identifier":
                     tab.op({"op": "type", "match": "Email or phone", "text": account})
                     tab.click('button "Next"')
