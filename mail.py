@@ -295,11 +295,19 @@ def header(headers, name):
     return next((h["value"] for h in headers if h["name"].lower() == name.lower()), "")
 
 
+def authentication_message(text):
+    """Authentication message contents belong only in the private challenge transport."""
+    return bool(re.search(r"(?:verification|security|sign[ -]?in|login|one[ -]?time|authentication)\s+(?:code|password)|(?:code|password)\s+(?:for|to)\s+(?:sign|log)", text, re.I))
+
+
 def observation(acct, m):
     labels = m.get("labelIds", [])
     headers = m.get("payload", {}).get("headers", [])
     name, address = email.utils.parseaddr(header(headers, "From"))
     subject = header(headers, "Subject") or "(no subject)"
+    snippet = html.unescape(m.get("snippet", ""))
+    if authentication_message(subject + "\n" + snippet):
+        subject, snippet = "Verification code", "Private authentication message"
     sent = "SENT" in labels
     to = header(headers, "To")
     facts = {
@@ -310,7 +318,7 @@ def observation(acct, m):
         "from_email": address.lower(),
         "to": to,
         "subject": subject,
-        "snippet": html.unescape(m.get("snippet", "")),
+        "snippet": snippet,
         "date": int(m.get("internalDate", 0)),
         "labels": sorted(labels),
         "inbox": "INBOX" in labels,
@@ -1804,6 +1812,9 @@ def act(action, args):
         m = acct.get(f"messages/{args['id']}", format="full")
         headers = m.get("payload", {}).get("headers", [])
         body = text_of(m.get("payload", {}))
+        if authentication_message(header(headers, "Subject") + "\n" + body):
+            body = "Private authentication message. Use authentication_code through the browser challenge."
+            headers = [{**h, "value": "Verification code"} if h["name"].lower() == "subject" else h for h in headers]
         limit = int(args.get("max_chars", 20000))
         import gmail_files  # its attachments tool (it imports this module)
         carried = gmail_files.pieces(m.get("payload", {}))
