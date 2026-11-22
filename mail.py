@@ -539,8 +539,22 @@ def find_account(address):
     return match[0]
 
 
-def text_of(part):
-    """A message's readable text: its plain-text part, else its HTML with the tags stripped."""
+def kept_links(rich):
+    """HTML whose links stay as words: each link's text, then its address in brackets, as a
+    plain-text part gives them ("Track package (https://…)"); a link without words is its address."""
+    def one(m):
+        url = html.unescape(m.group("quoted") or m.group("bare") or "").strip()
+        inside = m.group("inside")
+        words = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", inside))).strip()
+        if not re.match(r"(?i)(https?|mailto):", url):
+            return inside
+        return f" {url} " if not words or words == url else f"{inside} ({url})"
+    return re.sub(r"""(?is)<a\b[^>]*?\bhref\s*=\s*(?:(["'])(?P<quoted>.*?)\1|(?P<bare>[^\s>]+))[^>]*>(?P<inside>.*?)</a\s*>""", one, rich)
+
+
+def text_of(part, links=False):
+    """A message's readable text: its plain-text part, else its HTML with the tags stripped, and
+    with `links`, its links kept as words."""
     def walk(p):
         yield p
         for c in p.get("parts", []):
@@ -556,6 +570,8 @@ def text_of(part):
         return "\n".join(plain)
     rich = "\n".join(decode(p) for p in parts if p.get("mimeType") == "text/html")
     rich = re.sub(r"(?is)<(script|style).*?</\1>", "", rich)
+    if links:
+        rich = kept_links(rich)
     rich = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>", "\n", rich)
     return re.sub(r"\n\s*\n+", "\n\n", html.unescape(re.sub(r"<[^>]+>", "", rich))).strip()
 
@@ -1821,7 +1837,7 @@ def act(action, args):
         acct = find_account(args["account"])
         m = acct.get(f"messages/{args['id']}", format="full")
         headers = m.get("payload", {}).get("headers", [])
-        body = text_of(m.get("payload", {}))
+        body = text_of(m.get("payload", {}), links=True)
         if authentication_message(header(headers, "Subject") + "\n" + body):
             body = "Private authentication message. Use authentication_code through the browser challenge."
             headers = [{**h, "value": "Verification code"} if h["name"].lower() == "subject" else h for h in headers]
