@@ -720,6 +720,10 @@ def enable_send(args, progress=lambda m: None):
         if "@" not in address:
             raise
         address = address.lower()  # Not connected yet: the grant connects it, read and send at once.
+    if SWITCH:
+        from authorize import authorize
+        result = authorize(address)
+        return {**result, "account": address, "can_send": result.get("connected", False), "state": "granted" if result.get("connected") else "blocked"}
     if granted_send(address):
         return {"account": address, "can_send": True, "note": f"{address} can send already: nothing to grant."}
     with grant_lock:
@@ -1763,6 +1767,12 @@ def answer(acct, m):
 
 
 def act(action, args):
+    if action == "connect" and SWITCH:
+        from authorize import authorize
+        address = args.get("address") or args.get("account")
+        if not address:
+            raise ValueError("Name the existing account to authorize")
+        return authorize(address)
     if action == "connect":
         return {"url": google.consent_url(args.get("address"), [SEND_SCOPE] if args.get("send") else ()),
                 "note": "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, which finishes it."}
