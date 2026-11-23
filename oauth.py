@@ -883,20 +883,22 @@ def status():
 
 
 def heartbeat():
-    """Says how it is, in vitals/google-oauth: what keeps its --health-every promise."""
-    facts, error = {}, state["last_error"]
+    """Says how it is, in vitals/google-oauth: what keeps its --health-every promise. `failing` is what's wrong now
+    (the shared client missing or unreadable), cleared once it's back; a call that failed is its caller's to hear,
+    kept as last_error."""
+    facts, failing = {}, None
     try:
         f = client_facts()
         facts = {"client": f["fingerprint"], "project": f["project"], "callback_registered": f["callback_registered"]}
     except Exception as e:  # noqa: BLE001
-        error = f"client: {e}"
+        failing = f"client: {e}"
     scopes = server.local.get("data_access_health")
     scopes = scopes() if scopes else {}
-    summary = f"Last failed: {error}" if error else f"Ready: {len(connects())} connect(s) waiting on the user"
+    summary = f"Failing: {failing}" if failing else f"Ready: {len(connects())} connect(s) waiting on the user"
     if scopes.get("waiting"):
         summary += f", {len(scopes['waiting'])} Data Access fill(s) waiting on his approval"
     app.emit("heartbeat", {"entity": "sense:google-oauth", "summary": summary,
-                           "facts": {**state, **facts, "waiting": len(connects()), "last_error": error,
+                           "facts": {**state, **facts, "waiting": len(connects()), "failing": failing,
                                      **({"consent_scopes": {k: scopes[k] for k in ("reads", "fills", "saves", "failed", "last_error", "last_save")},
                                          "consent_scopes_waiting": len(scopes.get("waiting") or {})} if scopes else {})}})
 
