@@ -15,6 +15,8 @@ NAME = "google"
 
 app = sbmcp.Server(NAME, version="2", instructions=(
     "The user's Gmail, Drive and Sheets, and the shared Google sign-in (Calendar is the calendar extension's). "
+    "In Switch, authorize refreshes/reuses existing grants and completes routine authorized consent itself; "
+    "only an unavailable private credential, passkey or human check needs the user. Never ask for a code in chat. "
     "Gmail: every inbox he connects: inbox and sent mail recorded as gmail-message:<account>-<id> in comms/gmail "
     "(promotions, social and forums left out), each inbox as gmail-account:<account>, followed once a minute; search and "
     "read any mail; for an email in his name, approval writes it into Drafts and answers one approval card's parts "
@@ -39,7 +41,7 @@ app = sbmcp.Server(NAME, version="2", instructions=(
     reads=["asks", "*/accounts", "comms/gmail"],
     # legacy: the Keychain service its grants were kept in before Switch's connections (mail.KEYCHAIN), which Switch
     # moves into them.
-    connections=[{"provider": "google", "multiple": True, "legacy": "switchboard-gmail", "scopes": [
+    connections=[{"provider": "google", "multiple": True, "session": {"signIn": "authorize", "status": "connection_status"}, "legacy": "switchboard-gmail", "scopes": [
         "https://www.googleapis.com/auth/gmail.readonly",
         # Drafts and sending (mail.SEND_SCOPE), asked for in the same consent so nothing waits on a second one.
         "https://www.googleapis.com/auth/gmail.compose",

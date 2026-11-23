@@ -715,6 +715,9 @@ def _setup(appendage, apis, address, args, require, why, about, mac, dry_run, ct
     "goes up as a card with the tab live on it instead. Answers the ask to wait on or follow; one already waiting is "
     "answered rather than asked twice, and an account connected already asks nothing."))
 def connect(appendage, address, args=None, require=None, entity=None, why=None, about=None, mac=None, again=False, dry_run=False, ctx=None):
+    if os.environ.get("SWITCH_MACHINE"):
+        from authorize import authorize
+        return authorize(address)
     return tracked(connect_account)(appendage, address, args, require, entity, why, about, mac, dry_run, again,
                                     work=ctx.work if ctx else None, progress=ctx.progress if ctx else (lambda m: None))
 

@@ -25,7 +25,11 @@
           "https://www.googleapis.com/auth/spreadsheets"
         ],
         "multiple": true,
-        "legacy": "switchboard-gmail"
+        "legacy": "switchboard-gmail",
+        "session": {
+          "signIn": "authorize",
+          "status": "connection_status"
+        }
       }
     ]
   }

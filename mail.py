@@ -295,11 +295,19 @@ def header(headers, name):
     return next((h["value"] for h in headers if h["name"].lower() == name.lower()), "")
 
 
+def authentication_message(text):
+    """Authentication message contents belong only in the private challenge transport."""
+    return bool(re.search(r"(?:verification|security|sign[ -]?in|login|one[ -]?time|authentication)\s+(?:code|password)|(?:code|password)\s+(?:for|to)\s+(?:sign|log)", text, re.I))
+
+
 def observation(acct, m):
     labels = m.get("labelIds", [])
     headers = m.get("payload", {}).get("headers", [])
     name, address = email.utils.parseaddr(header(headers, "From"))
     subject = header(headers, "Subject") or "(no subject)"
+    snippet = html.unescape(m.get("snippet", ""))
+    if authentication_message(subject + "\n" + snippet):
+        subject, snippet = "Verification code", "Private authentication message"
     sent = "SENT" in labels
     to = header(headers, "To")
     facts = {
@@ -310,7 +318,7 @@ def observation(acct, m):
         "from_email": address.lower(),
         "to": to,
         "subject": subject,
-        "snippet": html.unescape(m.get("snippet", "")),
+        "snippet": snippet,
         "date": int(m.get("internalDate", 0)),
         "labels": sorted(labels),
         "inbox": "INBOX" in labels,
@@ -531,8 +539,22 @@ def find_account(address):
     return match[0]
 
 
-def text_of(part):
-    """A message's readable text: its plain-text part, else its HTML with the tags stripped."""
+def kept_links(rich):
+    """HTML whose links stay as words: each link's text, then its address in brackets, as a
+    plain-text part gives them ("Track package (https://…)"); a link without words is its address."""
+    def one(m):
+        url = html.unescape(m.group("quoted") or m.group("bare") or "").strip()
+        inside = m.group("inside")
+        words = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", inside))).strip()
+        if not re.match(r"(?i)(https?|mailto):", url):
+            return inside
+        return f" {url} " if not words or words == url else f"{inside} ({url})"
+    return re.sub(r"""(?is)<a\b[^>]*?\bhref\s*=\s*(?:(["'])(?P<quoted>.*?)\1|(?P<bare>[^\s>]+))[^>]*>(?P<inside>.*?)</a\s*>""", one, rich)
+
+
+def text_of(part, links=False):
+    """A message's readable text: its plain-text part, else its HTML with the tags stripped, and
+    with `links`, its links kept as words."""
     def walk(p):
         yield p
         for c in p.get("parts", []):
@@ -548,6 +570,8 @@ def text_of(part):
         return "\n".join(plain)
     rich = "\n".join(decode(p) for p in parts if p.get("mimeType") == "text/html")
     rich = re.sub(r"(?is)<(script|style).*?</\1>", "", rich)
+    if links:
+        rich = kept_links(rich)
     rich = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>", "\n", rich)
     return re.sub(r"\n\s*\n+", "\n\n", html.unescape(re.sub(r"<[^>]+>", "", rich))).strip()
 
@@ -712,6 +736,10 @@ def enable_send(args, progress=lambda m: None):
         if "@" not in address:
             raise
         address = address.lower()  # Not connected yet: the grant connects it, read and send at once.
+    if SWITCH:
+        from authorize import authorize
+        result = authorize(address)
+        return {**result, "account": address, "can_send": result.get("connected", False), "state": "granted" if result.get("connected") else "blocked"}
     if granted_send(address):
         return {"account": address, "can_send": True, "note": f"{address} can send already: nothing to grant."}
     with grant_lock:
@@ -1794,6 +1822,12 @@ def answer(acct, m):
 
 
 def act(action, args):
+    if action == "connect" and SWITCH:
+        from authorize import authorize
+        address = args.get("address") or args.get("account")
+        if not address:
+            raise ValueError("Name the existing account to authorize")
+        return authorize(address)
     if action == "connect":
         return {"url": google.consent_url(args.get("address"), [SEND_SCOPE] if args.get("send") else ()),
                 "note": "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, which finishes it."}
@@ -1842,7 +1876,10 @@ def act(action, args):
         acct = find_account(args["account"])
         m = acct.get(f"messages/{args['id']}", format="full")
         headers = m.get("payload", {}).get("headers", [])
-        body = text_of(m.get("payload", {}))
+        body = text_of(m.get("payload", {}), links=True)
+        if authentication_message(header(headers, "Subject") + "\n" + body):
+            body = "Private authentication message. Use authentication_code through the browser challenge."
+            headers = [{**h, "value": "Verification code"} if h["name"].lower() == "subject" else h for h in headers]
         limit = int(args.get("max_chars", 20000))
         import gmail_files  # its attachments tool (it imports this module)
         carried = gmail_files.pieces(m.get("payload", {}))

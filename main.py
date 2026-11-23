@@ -13,6 +13,9 @@ is one tool here that hands the call to the part its arguments are for, so every
 """
 import inspect
 
+import authentication
+import authorize
+
 import drive
 import mail
 import gmail_files  # noqa: F401  (Gmail's attachments tool)
@@ -21,6 +24,9 @@ import data_access  # noqa: F401  (an OAuth app's Data Access page: consent_scop
 import scope_audit  # noqa: F401  (an OAuth app's scopes checked against its code, Console and justifications)
 import sheets
 from server import app, local, specs
+
+authentication.register()
+authorize.register()
 
 PARTS = {"gmail": mail, "drive": drive, "sheets": sheets}
 
