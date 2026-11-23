@@ -1325,6 +1325,39 @@ def sent_since(acct, draft_id, mine):
     return None
 
 
+def words_of(d):
+    """A draft's own words as he'd see them in Gmail's composer, above the quote of what it answers: read from its HTML
+    (each div or break a line; Gmail rewraps the text part it saves), else its text."""
+    page = html_of(d["message"].get("payload", {}))
+    if not page.strip():
+        return split_quote(text_of(d["message"].get("payload", {})))[0]
+    m = QUOTE_START.search(page)
+    page = page[:m.start()] if m else page
+    page = re.sub(r"(?is)<(script|style|head).*?</\1>", "", page)
+    page = re.sub(r"(?i)<br\s*/?>\s*(</div>)", r"\1", page)  # Gmail's empty line: <div><br></div>
+    page = re.sub(r"(?i)<(div|p)\b[^>]*>|<br\s*/?>", "\n", page)
+    words = html.unescape(re.sub(r"<[^>]+>", "", page)).replace("\xa0", " ")
+    return "\n".join(line.rstrip() for line in words.split("\n")).strip()
+
+
+def draft_words(args):
+    """A draft's words, kept as one version with the card that shows them: read, or with text, written in place of its
+    words (its recipients, subject, quote and attachments stay)."""
+    acct = sendable(args["account"])
+    d = find_draft(acct, {"draft": args["draft"]})
+    if d is None:
+        return {"gone": True}
+    if args.get("text") is not None:
+        if not args["text"].strip():
+            raise ValueError("text is empty: a draft's words can't be cleared from the card")
+        if not same(args["text"], words_of(d)):
+            rewrite(acct, d, text_of(d["message"].get("payload", {})), args["text"])
+            d = find_draft(acct, {"draft": args["draft"]})
+            if d is None:
+                return {"gone": True}
+    return {"text": words_of(d)}
+
+
 def make_draft(args):
     """Writes an email (a reply in a thread, or a new one) into Gmail's Drafts, sending nothing. Writing again in the
     same thread updates the draft this made there (for a new email, the one it made to the same people with the same
@@ -1362,7 +1395,7 @@ def make_draft(args):
         "draft_id": d["id"], "message_id": d["message"]["id"], "thread_id": thread, "account": acct.address,
         **envelope, "body": args["body"], "updated": bool(replace and d["id"] == replace), "link": link,
         "approval": {
-            "drafts": [{"name": "reply", "label": label, "text": args["body"]}],
+            "drafts": [{"name": "reply", "label": label, "text": args["body"], "copy": copy_of(acct.address, d["id"])}],
             "from_line": from_line(envelope["from_address"], envelope["from_why"]),
             "assists": [
                 {"label": "Send", "target": INSTANCE, "action": "send",
@@ -1373,6 +1406,11 @@ def make_draft(args):
             "resolve_when": f'stream("comms/gmail") | where at > {at} and body.facts.sent == true and body.facts.draft_id == "{d["id"]}"',
         },
     }
+
+
+def copy_of(account, draft_id):
+    """Where a card's draft also lives, so the card and the Gmail draft stay one version: draft_words reads and writes it."""
+    return {"target": INSTANCE, "action": "draft_words", "args": {"account": account, "draft": draft_id}}
 
 
 def from_line(address, why=None):
@@ -1521,7 +1559,8 @@ def make_approval(args):
         info, e, name = w["info"], w["e"], w["name"]
         subject = info["subject"] if len(info["subject"]) <= 70 else info["subject"][:69] + "…"
         label = f"To {who(w['people'], full=True)}" + (f" · {subject}" if subject else "") + f" · from {info['from_address']}"
-        drafts.append({"name": name, "label": e.get("label") or label, "text": info["body"]})
+        drafts.append({"name": name, "label": e.get("label") or label, "text": info["body"],
+                       "copy": copy_of(info["account"], info["draft_id"])})
         people = w["people"]
         to = (people[0][0] or people[0][1]) + (f" +{len(people) - 1}" if len(people) > 1 else "") if people else "nobody"
         sends.append({"label": f"Send to {to}", "target": INSTANCE, "action": "send",
@@ -1830,6 +1869,8 @@ def act(action, args):
         return list_drafts(args)
     if action == "discard":
         return discard(args)
+    if action == "draft_words":
+        return draft_words(args)
     if action == "enable_send":
         return enable_send(args)
     raise ValueError(f"unknown action {action}")
@@ -2080,6 +2121,19 @@ TOOLS = [
             "required": [
                 "account"
             ]
+        }
+    },
+    {
+        "name": "draft_words",
+        "description": "A Gmail draft's own words, as he'd see them in Gmail (above the quote of what it answers): read them, or with text, write them in place of its words (its recipients, subject, quote and attachments stay), sending nothing. Switch's core calls it to keep an approval card's draft and the Gmail draft one version: his edits in either reach the other. Returns text, or gone once it's sent or deleted.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "account": {"type": "string"},
+                "draft": {"type": "string", "description": "The draft's id."},
+                "text": {"type": "string", "description": "Its new words."}
+            },
+            "required": ["account", "draft"]
         }
     },
     {
