@@ -1,6 +1,11 @@
-"""Google OAuth for the Google senses: one way to connect an account, from any browser.
+"""Google OAuth for the Google senses: one way to connect an account.
 
-A consent comes back through the install's own callback (`sb whoami`'s `oauth_callback`: the core's
+In Switch, a consent is the core's (connections/connect): its Desktop client and PKCE, coming back to a loopback
+redirect (`http://127.0.0.1:<port>/oauth/callback`, any port) that this process serves and relays to
+connections/finish (`Relay`), so it's opened in a browser on this machine. A person on another device connects through
+Switch's own Connect button instead (connections_request). What follows is how it was in Switchboard.
+
+A consent came back through the install's own callback (`sb whoami`'s `oauth_callback`: the core's
 `/oauth/callback` on its public address for pages), which hands the code to this sense's `finish`. So the person can
 allow access from whatever browser they're on, their phone's included, signed in to the account or not; no Mac's
 browser is in the way. The client is a Web-application client of the person's own Google Cloud project, with that
@@ -14,6 +19,7 @@ client issued it, and the scopes it was granted.
 
 import base64
 import hashlib
+import http.server
 import json
 import os
 import secrets
@@ -60,6 +66,89 @@ PROVIDER = "google"
 def _server():
     from server import app  # noqa: PLC0415  (the one server, made after this module loads)
     return app
+
+
+class Relay:
+    """Switch's redirect for a consent this process starts: a loopback listener on 127.0.0.1 (the core's Desktop client
+    takes any port) that hands Google's answer to the core's connections/finish. One for the process, started on first
+    use; each consent it started is kept a day."""
+
+    KEEP_S = 86400
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.server = None
+        self.pending = {}
+
+    def url(self):
+        with self.lock:
+            if self.server is None:
+                self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+                threading.Thread(target=self.server.serve_forever, daemon=True).start()
+            return f"http://127.0.0.1:{self.server.server_port}/oauth/callback"
+
+    def start(self, address=None):
+        """Google's consent page through the core, for every scope Switch's extensions declare for Google."""
+        from authorize import private  # noqa: PLC0415  (authorize imports mail, which imports this)
+        redirect = self.url()
+        consent = private("connections", "connect", {"provider": PROVIDER, **({"account": address} if address else {}),
+                                                     "redirectUri": redirect})
+        state = urllib.parse.parse_qs(urllib.parse.urlsplit(consent["url"]).query)["state"][0]
+        with self.lock:
+            now = time.time()
+            self.pending = {s: at for s, at in self.pending.items() if at > now - self.KEEP_S}
+            self.pending[state] = now
+        return consent["url"]
+
+    def _take(self, state):
+        with self.lock:
+            return self.pending.pop(state, None) is not None
+
+    def _handler(self):
+        relay = self
+
+        class Callback(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def _page(self, status, words):
+                body = f"<!doctype html><meta charset=utf-8><title>Switch</title><p>{words}</p>".encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                from authorize import private  # noqa: PLC0415
+                url = urllib.parse.urlsplit(self.path)
+                params = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items() if len(v) == 1}
+                if url.path != "/oauth/callback" or not relay._take(params.get("state", "")):
+                    self._page(400, "This sign-in link wasn't started here, or it was already used.")
+                    return
+                declined = "error" in params or "code" not in params
+                try:
+                    private("connections", "finish", {"state": params["state"],
+                                                      **({"error": params.get("error") or "no_code"} if declined else {"code": params["code"]})})
+                except (OSError, ValueError, KeyError):
+                    # A declined flow: the core drops it and answers with an error, as expected.
+                    if not declined:
+                        self._page(502, "Google answered, but Switch couldn't finish connecting the account. Start again from Switch.")
+                        return
+                if declined:
+                    self._page(200, "Nothing was connected. You can close this tab.")
+                    return
+                self._page(200, "Connected to Switch. You can close this tab.")
+
+        return Callback
+
+
+relay = Relay()
+
+OPENS = ("Opens in a browser on the machine this runs on (its Chrome, through the browser extension): Google comes back to "
+         "Switch's loopback redirect here, which finishes it. To connect from the user's own device, use Switch's Connect "
+         "button (connections_request) instead.")
+"""What a consent link from connect says in Switch."""
 
 
 class Google:
@@ -201,6 +290,8 @@ class Google:
     # Connecting
 
     def callback(self):
+        if SWITCH:
+            return relay.url()
         r = subprocess.run(["sb", "whoami"], capture_output=True, text=True)
         url = json.loads(r.stdout).get("oauth_callback") if r.returncode == 0 else None
         if not url:
@@ -218,7 +309,10 @@ class Google:
 
     def consent_url(self, address=None, extra=()):
         """Google's consent page for this sense's scopes (and any `extra` ones), coming back through the install's
-        callback. Works from any browser; `address` is suggested on Google's account chooser."""
+        callback. Works from any browser; `address` is suggested on Google's account chooser. In Switch: the core's
+        consent, for every scope Switch's extensions declare for Google (`extra` among them), back through `relay`."""
+        if SWITCH:
+            return relay.start(address)
         redirect, c, scopes = self.callback(), self.client(), [*self.scopes, *extra]
         verifier = secrets.token_urlsafe(48)
         state = f"{self.instance}~{secrets.token_urlsafe(12)}"

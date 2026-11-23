@@ -41,7 +41,7 @@ from http import client as httpclient
 
 import sbmcp
 from server import part, home as home_of
-from google_oauth import Disconnected, Google
+from google_oauth import OPENS, SWITCH, Disconnected, Google
 
 NAME = "google-sheets"
 HOME = home_of("sheets")
@@ -1102,8 +1102,9 @@ def append(sheet, rows, tab=None, header=1, input="user", account=None, dry_run=
 
 def connect(address=None):
     url = google.consent_url(address)
+    opens = OPENS if SWITCH else "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, which finishes it."
     out = {"url": url, "note": (
-        "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, which finishes it. "
+        opens + " "
         "It asks to see and edit the account's Google Sheets (and its email address, to know which account it is). "
         "Google shows its unverified-app warning first: Advanced, then Go to switchboard.")}
     if address:

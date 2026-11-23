@@ -19,8 +19,13 @@ console, call its connect, walk Google's pages in the Mac mini's Chrome, and put
 - `status`: the client, every Google appendage here (has the client, its google_oauth.py current or not), their
   accounts, and the connects waiting on the user.
 
-Secrets never touch the log: the client lives in this appendage's SB_HOME (client.json, seeded once from the core's
-web-client.json) and in each appendage's own secrets.json; only fingerprints (the first 12 of a SHA-256) are said.
+Secrets never touch the log: the client lives in this appendage's SB_HOME (client.json) and in each appendage's own
+secrets.json; only fingerprints (the first 12 of a SHA-256) are said.
+
+In Switch there are no appendages to set up: Gmail, Drive and Sheets are parts of this extension, and calendar and
+contacts are extensions of their own, all on the user's Google connections. A consent is the core's (its Desktop client,
+PKCE, Switch's loopback redirect: google_oauth's `relay`), so the Web client in client.json is optional: it names the
+Cloud project the console pages open, and status says what it has.
 """
 
 import hashlib
@@ -46,15 +51,19 @@ HOME = home_of("oauth")
 INSTANCE = os.environ.get("SB_INSTANCE") or f"{NAME}@local"
 HOST = INSTANCE.split("@", 1)[1]
 """The machine it runs on, whose Google appendages it sets up: it writes their homes, on this machine's disk."""
+SWITCH = bool(os.environ.get("SWITCH_MACHINE"))
+"""Run by Switch: its Google parts and extensions are on the user's connections, consents come back through
+google_oauth's relay."""
 KEEPER = os.environ.get("GOOGLE_OAUTH_KEEPER") or (f"macos@{HOST}" if sys.platform == "darwin" else f"server@{HOST}")
-"""That machine's keeper, which lists them with their homes."""
+"""In Switchboard, that machine's keeper, which listed them with their homes."""
 HEARTBEAT_S = float(os.environ.get("GOOGLE_OAUTH_HEARTBEAT_S") or 600)
 """How often it says how it is, in vitals/google-oauth: what --health-every 1800000 promises (with room)."""
 WATCH_S = float(os.environ.get("GOOGLE_OAUTH_WATCH_S") or 60)
 """How often it looks at the connects waiting on the user: connected, declined, or lapsed."""
-SEED_FILES = [p for p in (os.environ.get("GOOGLE_OAUTH_CLIENT_FILE"),
-                          os.path.expanduser("~/.local/share/Switchboard/web-client.json")) if p]
-"""Where the shared client comes from the first time: the Web client the core's /oauth/callback was set up with."""
+SEED_FILES = [p for p in (os.environ.get("GOOGLE_OAUTH_CLIENT_FILE"),) if p]
+"""Where the shared client may come from the first time, when client.json isn't there yet."""
+PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
+"""The Cloud project, when there's no client.json to name it."""
 OWNER = os.environ.get("GOOGLE_CLOUD_OWNER") or "me@example.com"
 """The Google account that owns the Cloud project, which the console is opened as."""
 MAC = os.environ.get("GOOGLE_OAUTH_MAC") or "local"
@@ -107,7 +116,11 @@ def query(q):
 
 
 def callback():
-    """The core's public /oauth/callback, which every consent comes back to."""
+    """Where every consent comes back to: in Switch, the loopback redirect this process serves (google_oauth's relay);
+    in Switchboard, the core's public /oauth/callback."""
+    if SWITCH:
+        import google_oauth  # noqa: PLC0415
+        return google_oauth.relay.url()
     r = subprocess.run(["sb", "whoami"], capture_output=True, text=True, timeout=30)
     url = json.loads(r.stdout).get("oauth_callback") if r.returncode == 0 else None
     if not url:
@@ -217,15 +230,43 @@ def client():
     return c.get("web") or c.get("installed") or c
 
 
+def project():
+    """The Cloud project: the Web client's, or GOOGLE_CLOUD_PROJECT's."""
+    try:
+        return client().get("project_id") or PROJECT
+    except RuntimeError:
+        if PROJECT:
+            return PROJECT
+        raise
+
+
+def core(app_name, tool, args):
+    """One of the core's apps (connections, extensions), as an extension may call it."""
+    from authorize import private  # noqa: PLC0415  (authorize imports mail, which imports google_oauth)
+    return private(app_name, tool, args)
+
+
 def client_facts():
-    """What can be said of the client: never its secret."""
-    text, c = client_text(), client()
-    facts = {"project": c.get("project_id"), "client_id": c.get("client_id"), "fingerprint": fingerprint(text),
-             "redirect_uris": c.get("redirect_uris", []), "owner": OWNER}
+    """What can be said of the clients: never a secret. In Switch, the core's (connections/readiness: their kinds and
+    redirects) and whether one takes Switch's loopback redirect (a Desktop client); the Web client, when kept."""
+    facts = {"owner": OWNER}
+    try:
+        text, c = client_text(), client()
+        facts.update({"project": c.get("project_id"), "client_id": c.get("client_id"), "fingerprint": fingerprint(text),
+                      "redirect_uris": c.get("redirect_uris", [])})
+    except RuntimeError as e:
+        if not SWITCH:
+            raise
+        facts.update({"project": PROJECT, "client_id": None, "fingerprint": None, "redirect_uris": [], "web_client": str(e)})
     try:
         facts["callback"] = callback()
-        facts["callback_registered"] = facts["callback"] in facts["redirect_uris"]
-    except RuntimeError as e:
+        if SWITCH:
+            clients = core("connections", "readiness", {"provider": "google"}).get("clients", [])
+            facts["core_clients"] = clients
+            facts["callback_registered"] = any(k.get("kind") == "installed" for k in clients)
+        else:
+            facts["callback_registered"] = facts["callback"] in facts["redirect_uris"]
+    except (RuntimeError, OSError, ValueError) as e:
         facts["callback"], facts["callback_registered"] = None, False
         facts["callback_error"] = str(e)
     return facts
@@ -241,9 +282,13 @@ PARTS = {"gmail": ("gmail", "gmail_connect"), "google-calendar": ("calendar", "c
 def appendages():
     """Every appendage this machine keeps, as its keeper lists them (name, instance, home, folder, code...), with this
     one's parts (google-calendar, google-drive, google-sheets) listed as the appendages they were: each its own home,
-    connected through its own connect action here."""
-    out = ask(KEEPER, "appendages", {}, 30)
-    items = out.get("appendages", out) if isinstance(out, dict) else out
+    connected through its own connect action here. In Switch, only the parts: the other extensions on Google
+    connections are in status' connections."""
+    if SWITCH:
+        items = []
+    else:
+        out = ask(KEEPER, "appendages", {}, 30)
+        items = out.get("appendages", out) if isinstance(out, dict) else out
     found = [a for a in items if isinstance(a, dict) and a.get("name") and a["name"] not in PARTS]
     mine = next((a for a in found if a["name"] == NAME), None)
     folder = (mine or {}).get("folder") or os.path.dirname(HERE)
@@ -348,14 +393,14 @@ def provision(a, dry_run=False):
 
 def enable(apis, dry_run=False, mac=None, progress=lambda m: None):
     """Each API enabled in the Cloud project, through its console page in the Mac's Chrome."""
-    project = client().get("project_id")
-    if not project:
+    cloud = project()
+    if not cloud:
         raise RuntimeError("the shared client names no project_id")
     tab = tab_for(mac or MAC, "google-oauth-console")
     out = []
     try:
         for api in apis:
-            out.append(consent.console_api(tab, api_of(api), project, OWNER, time.time() + 90, dry_run, progress))
+            out.append(consent.console_api(tab, api_of(api), cloud, OWNER, time.time() + 90, dry_run, progress))
     finally:
         tab.release()
     return out
@@ -492,7 +537,7 @@ def connect_account(appendage, address, args=None, require=None, entity=None, wh
     session = f"google-connect-{slug(name)}-{slug(address)}"[:80]
     c = {"id": new_id(), "name": name, "instance": instance, "connect_action": a.get("connect_action"), "address": address, "args": args or {}, "require": require or {},
          "entity": entity, "why": why, "about": about or ["ws:switchboard"], "mac": mac or MAC, "session": session,
-         "work": work, "at": int(time.time() * 1000), "project": client().get("project_id")}
+         "work": work, "at": int(time.time() * 1000), "project": project()}
     # One card per account and appendage: one already waiting is the answer.
     for cid, other in connects().items():
         if other["instance"] == instance and other.get("connect_action") == c["connect_action"] and other["address"] == address and other.get("args") == c["args"] and not again:
@@ -751,7 +796,7 @@ def discard(connect, why=None):
                  "page in the Mac mini's Chrome as me@example.com, skipping those enabled already. setup does this "
                  "for an appendage's apis."))
 def enable_apis(apis, mac=None, dry_run=False, ctx=None):
-    return {"apis": tracked(enable)(apis, dry_run, mac, ctx.progress if ctx else (lambda m: None)), "project": client().get("project_id")}
+    return {"apis": tracked(enable)(apis, dry_run, mac, ctx.progress if ctx else (lambda m: None)), "project": project()}
 
 
 GUIDE = """How a Google appendage uses the shared google_oauth.py (gmail, google-calendar, google-drive and google-sheets do):
@@ -824,8 +869,17 @@ def status():
     waiting = [{"connect": cid, "appendage": c["instance"], "address": c["address"], "ask": c.get("ask"),
                 "state": c.get("state"), "since": c["at"]} for cid, c in connects().items()]
     scopes = server.local.get("data_access_health")
-    return {"client": facts, "appendages": found_, "waiting": waiting, "kit": {"sha256": kit_sha()[:12]},
-            **({"consent_scopes": scopes()} if scopes else {}), **state}
+    out = {"client": facts, "appendages": found_, "waiting": waiting, "kit": {"sha256": kit_sha()[:12]},
+           **({"consent_scopes": scopes()} if scopes else {}), **state}
+    if SWITCH:
+        try:
+            listed = core("connections", "list", {})
+            out["connections"] = [{"account": c["account"], "scopes": c.get("scopes", []), "missing": c.get("missing", [])}
+                                  for c in listed.get("connections", []) if c.get("provider") == "google"]
+            out["extensions"] = next((n.get("apps", []) for n in listed.get("needs", []) if n.get("provider") == "google"), [])
+        except (OSError, ValueError, KeyError) as e:
+            out["connections_error"] = str(e)
+    return out
 
 
 def heartbeat():

@@ -40,7 +40,7 @@ import zipfile
 
 import sbmcp
 from server import part, home as home_of
-from google_oauth import Disconnected, Google, TokenError
+from google_oauth import OPENS, SWITCH, Disconnected, Google, TokenError
 
 INSTANCE = os.environ.get("SB_INSTANCE", "google-drive@dev")
 HOME = home_of("drive")
@@ -752,8 +752,8 @@ def connect(address=None, default=False):
         started = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["state"][0]
         state.setdefault("make_default", {})[started] = bool(default)
         save_state()
-    return {"url": url, "note": "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, "
-                                "which finishes it. It asks only to add files to the Drive and see the ones it added."}
+    opens = OPENS if SWITCH else "Opens in any browser, a phone's included: Google comes back to Switchboard's own callback, which finishes it."
+    return {"url": url, "note": opens + " It asks only to add files to the Drive and see the ones it added."}
 
 
 def finish(code=None, state=None, redirect_uri=None):
