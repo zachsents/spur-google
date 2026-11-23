@@ -1916,7 +1916,7 @@ def act(action, args):
 TOOLS = [
     {
         "name": "connect",
-        "description": "Start connecting a Google account's inbox (read-only, or with send to send from it too): returns the consent URL. It works in any browser, the person's phone included: put it in an ask as a {label, url} button with resolve_when on gmail-account:<account> having facts.connected == true (and facts.can_send == true for send). Google sends the browser back to Switchboard's own callback, which finishes it.",
+        "description": ("Authorize an existing Google account (address) for every scope Switch's extensions declare, through the core's consent in this machine's browser: connected, or the step only the user can take. For a new account, Switch's Connect button (connections_request)." if SWITCH else "Start connecting a Google account's inbox (read-only, or with send to send from it too): returns the consent URL. It works in any browser, the person's phone included: put it in an ask as a {label, url} button with resolve_when on gmail-account:<account> having facts.connected == true (and facts.can_send == true for send). Google sends the browser back to Switchboard's own callback, which finishes it."),
         "input_schema": {
             "type": "object",
             "properties": {

@@ -40,7 +40,7 @@ import zipfile
 
 import sbmcp
 from server import part, home as home_of
-from google_oauth import OPENS, SWITCH, Disconnected, Google, TokenError
+from google_oauth import CONNECT, OPENS, SWITCH, Disconnected, Google, TokenError
 
 INSTANCE = os.environ.get("SB_INSTANCE", "google-drive@dev")
 HOME = home_of("drive")
@@ -819,9 +819,9 @@ app.tool(list_accounts, name="accounts", description="The connected Drives: whic
          schema={"type": "object", "properties": {}}, read_only=True)
 app.tool(connect, name="connect", description=(
     "Start connecting a Google account's Drive (scope drive.file: it adds files and sees only those): returns the consent "
-    "URL. It works in any browser, his phone's included: put it in an ask as a {label, url} button with resolve_when on "
-    "drive-account:<account with non-alphanumerics as hyphens, like me-example-com> having facts.connected == true. "
-    "Google sends the browser back to Switchboard's own callback, which finishes it."),
+    "URL; resolve_when on drive-account:<account with non-alphanumerics as hyphens, like me-example-com> having "
+    "facts.connected == true. "
+    + (CONNECT if SWITCH else "Google sends the browser back to Switchboard's own callback, which finishes it.")),
     schema={"type": "object", "properties": {
         "address": {"type": "string", "description": "The account to suggest on Google's chooser."},
         "default": {"type": "boolean", "description": "Make it the default Drive once connected (the first one is anyway)."}}})

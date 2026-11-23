@@ -41,7 +41,7 @@ from http import client as httpclient
 
 import sbmcp
 from server import part, home as home_of
-from google_oauth import OPENS, SWITCH, Disconnected, Google
+from google_oauth import CONNECT, OPENS, SWITCH, Disconnected, Google
 
 NAME = "google-sheets"
 HOME = home_of("sheets")
@@ -1219,11 +1219,11 @@ def list_accounts():
 
 app.tool(connect, name="connect", schema={"type": "object", "properties": {
     "address": prop("string", "The account to suggest on Google's chooser, like me@example.com.")}}, description=(
-    "Start connecting a Google account for writing its Sheets (scope spreadsheets): returns the consent URL, which "
-    "works in any browser, his phone's included. Put it in an ask as a {label, url} button with resolve_when on "
-    "sheets-account:<account with non-alphanumerics as hyphens, like me-example-com> having facts.connected == true "
-    "(returned as resolve_when when address is given). Google sends the browser back to Switchboard's own callback, "
-    "which finishes it. Reading needs none of this."))
+    "Start connecting a Google account for writing its Sheets (scope spreadsheets): returns the consent URL, with "
+    "resolve_when on sheets-account:<account with non-alphanumerics as hyphens, like me-example-com> having facts.connected == true "
+    "(returned as resolve_when when address is given). "
+    + (CONNECT if SWITCH else "Google sends the browser back to Switchboard's own callback, which finishes it.")
+    + " Reading needs none of this."))
 app.tool(finish, name="finish", description="Finish a consent with the code Google sent back. The core's OAuth callback calls this.",
          schema={"type": "object", "properties": {"code": {"type": "string"}, "state": {"type": "string"},
                                                   "redirect_uri": {"type": "string"}}, "required": ["code", "state"]})

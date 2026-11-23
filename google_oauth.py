@@ -68,6 +68,20 @@ def _server():
     return app
 
 
+def _connections(tool, args):
+    """The core's connections app for a consent's start: its error's words come back (no credential is in them)."""
+    headers = {"content-type": "application/json"}
+    if os.environ.get("SWITCH_TOKEN"):
+        headers["authorization"] = "Bearer " + os.environ["SWITCH_TOKEN"]
+    req = urllib.request.Request((os.environ.get("SWITCH_URL") or "http://127.0.0.1:4871") + f"/widgets/connections/{tool}",
+                                 data=json.dumps(args).encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=90) as res:
+        result = json.load(res)
+    if result.get("isError"):
+        said = " ".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text").strip()
+        raise ValueError(f"Switch wouldn't start the consent: {said[:200] or 'no reason given'}")
+    return result.get("structuredContent") or json.loads(result["content"][0]["text"])
+
 class Relay:
     """Switch's redirect for a consent this process starts: a loopback listener on 127.0.0.1 (the core's Desktop client
     takes any port) that hands Google's answer to the core's connections/finish. One for the process, started on first
@@ -89,10 +103,9 @@ class Relay:
 
     def start(self, address=None):
         """Google's consent page through the core, for every scope Switch's extensions declare for Google."""
-        from authorize import private  # noqa: PLC0415  (authorize imports mail, which imports this)
         redirect = self.url()
-        consent = private("connections", "connect", {"provider": PROVIDER, **({"account": address} if address else {}),
-                                                     "redirectUri": redirect})
+        consent = _connections("connect", {"provider": PROVIDER, **({"account": address} if address else {}),
+                                           "redirectUri": redirect})
         state = urllib.parse.parse_qs(urllib.parse.urlsplit(consent["url"]).query)["state"][0]
         with self.lock:
             now = time.time()
@@ -149,6 +162,9 @@ OPENS = ("Opens in a browser on the machine this runs on (its Chrome, through th
          "Switch's loopback redirect here, which finishes it. To connect from the user's own device, use Switch's Connect "
          "button (connections_request) instead.")
 """What a consent link from connect says in Switch."""
+CONNECT = ("In Switch it opens in a browser on the machine this runs on (Google comes back to Switch's loopback redirect "
+           "here); for the user's own device, Switch's Connect button (connections_request) instead.")
+"""What a connect tool's description says in Switch."""
 
 
 class Google:
