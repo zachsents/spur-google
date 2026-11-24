@@ -12,6 +12,7 @@
       "./main.py"
     ],
     "shim": "switchboard",
+    "heartbeat": 1080000,
     "needs": [
       "always-on"
     ],

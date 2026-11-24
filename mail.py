@@ -471,11 +471,14 @@ def ask_reconnect(acct):
 
 
 def sync(acct):
+    """Whether it read the account's history to its end."""
+    read = False
     try:
         if acct.history_id:
             follow(acct)
         else:
             backfill(acct)
+        read = True
         acct.connected, acct.error = True, None
         report(acct)
     except Disconnected as e:
@@ -484,14 +487,20 @@ def sync(acct):
         ask_reconnect(acct)
     except (HttpError, TokenError, RuntimeError, urllib.error.URLError, TimeoutError, OSError) as e:
         log(f"{acct.address}: {e}")
+    return read
+
+
+caught_up = {"now": False, "at": time.time()}
+"""Whether the last pass read every account to the end of its history, and when one last did (from the start, till one has)."""
 
 
 def heartbeat():
     live = [a for a in accounts.values() if a.connected]
+    behind_ms = 0 if caught_up["now"] else int((time.time() - caught_up["at"]) * 1000)
     record("observation", {
         "entity": "sense:gmail",
         "summary": f"Can't see its accounts: {blind}" if blind else f"Following {len(live)} of {len(accounts)} Gmail accounts",
-        "facts": {"accounts": sorted(accounts), "connected": sorted(a.address for a in live), "blind": blind, "checked_at": int(time.time() * 1000),
+        "facts": {"accounts": sorted(accounts), "connected": sorted(a.address for a in live), "blind": blind, "behind_ms": behind_ms, "checked_at": int(time.time() * 1000),
                   **({"attachments": sys.modules["gmail_files"].STATS} if "gmail_files" in sys.modules else {})},
     }, ["sense:gmail"], stream="vitals/gmail")
 
@@ -516,11 +525,13 @@ def loop():
                 looked = time.time()
             except RuntimeError as e:
                 log(str(e))
-        for acct in list(accounts.values()):
-            if acct.connected:
-                sync(acct)
+        started = time.time()
+        read = [sync(acct) if acct.connected else False for acct in list(accounts.values())]
         save_cursors()
-        if time.time() - beat > HEARTBEAT_S:
+        was, caught_up["now"] = caught_up["now"], all(read)
+        if caught_up["now"]:
+            caught_up["at"] = started
+        if time.time() - beat > HEARTBEAT_S or caught_up["now"] != was:
             heartbeat()
             beat = time.time()
         wake.wait(POLL_S)
