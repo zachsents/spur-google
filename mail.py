@@ -541,10 +541,23 @@ def loop():
 # Actions
 
 
+loading = threading.Lock()
+
+
 def find_account(address):
     if address in accounts:
         return accounts[address]
     match = [a for a in accounts.values() if address and address.lower() in (a.address.lower(), a.key)]
+    if not match:
+        # Just started, the loop may not have taken up the connections yet (they come once the core's handshake is
+        # done, and a call means it is): take them up now rather than refuse an approved send for up to a minute.
+        with loading:
+            try:
+                load_brain()
+            except RuntimeError as e:
+                log(str(e))
+        wake.set()
+        match = [a for a in accounts.values() if address and address.lower() in (a.address.lower(), a.key)]
     if not match:
         raise ValueError(f"not a connected account: {address} (connected: {', '.join(sorted(accounts)) or 'none'})")
     return match[0]
