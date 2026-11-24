@@ -1,3 +1,5 @@
+**Moved to [zachsents/switch](https://github.com/zachsents/switch/tree/main/extensions/google).** This repo is archived.
+
 # switch-ext-google
 
 Every inbox followed, mail searched and read, files and cells.
