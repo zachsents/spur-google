@@ -2145,7 +2145,7 @@ TOOLS = [
                 },
                 "why": {
                     "type": "string",
-                    "description": "A sentence for the card on why it matters now, like \"The Kenmore notice today had to go out by hand.\""
+                    "description": "A sentence for the card on why it matters now, like \"Today's notice had to go out by hand.\""
                 },
                 "approved": {
                     "type": "boolean",
